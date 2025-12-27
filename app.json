@@ -1,0 +1,21 @@
+{
+  "name": "Userbot Keren YPJ (Yang Penting Jadi)",
+  "description": "Userbot Telegram sederhana dibuat dengan penuh cinta dan sedikit begadang.",
+  "logo": "https://cdn-icons-png.flaticon.com/512/4712/4712035.png",
+  "keywords": ["telegram", "userbot", "python"],
+  "repository": "https://github.com/USERNAME_GITHUB_KAMU/NAMA_REPO_KAMU",
+  "env": {
+    "API_ID": {
+      "description": "Dapatkan di my.telegram.org",
+      "required": true
+    },
+    "API_HASH": {
+      "description": "Dapatkan di my.telegram.org",
+      "required": true
+    },
+    "SESSION_STRING": {
+      "description": "String sesi Pyrogram (Generate dulu pakai script terpisah)",
+      "required": true
+    }
+  }
+}
