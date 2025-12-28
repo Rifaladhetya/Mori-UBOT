@@ -17,7 +17,6 @@ print("Bot sedang berjalan... Jangan lupa napas!")
 # --- G-Cast Khusus Grup ---
 @app.on_message(filters.command("gcast", prefixes=".") & filters.me)
 async def gcast_handler(client, message):
-    # Logika ambil konten (teks atau reply)
     msg = message.reply_to_message or message
     
     if message.reply_to_message:
@@ -27,26 +26,29 @@ async def gcast_handler(client, message):
             return await message.edit("❌ **Gagal!** Berikan teks atau balas ke pesan.")
         content = message.text.split(None, 1)[1]
 
-    await message.edit("🏘️ **Menyebarkan pesan massal HANYA ke Grup...**")
+    await message.edit("🏘️ **Sinkronisasi Database & Memulai Broadcast...**")
     
     sent = 0
     failed = 0
     
+    # Kita pakai get_dialogs() untuk memaksa bot mendata ulang semua chat
     async for dialog in client.get_dialogs():
-        try:
-            # FILTER : Hanya Supergroup dan Group (Menghapus 'private')
-            if dialog.chat.type in ["supergroup", "group"]:
+        if dialog.chat.type in ["supergroup", "group"]:
+            try:
+                # Kita kirim ke ID yang sudah diverifikasi oleh dialog
                 if message.reply_to_message:
                     await content.copy(dialog.chat.id)
                 else:
                     await client.send_message(dialog.chat.id, content)
                 sent += 1
-                await asyncio.sleep(0.3) # Jeda aman biar gak disangka robot (ya emang bot sih)
-        except Exception:
-            failed += 1
-            continue
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                print(f"Gagal kirim ke {dialog.chat.id}: {e}")
+                failed += 1
+                continue
 
-    await message.edit(f"✅ **Broadcast Grup Selesai!**\n\n🏘️ Grup Berhasil: `{sent}`\n🔴 Gagal/Dilarang: `{failed}`")
+    await message.edit(f"✅ **Broadcast Grup Selesai!**\n\n🏘️ Grup Berhasil: `{sent}`\n🔴 Gagal: `{failed}`")
 
 app.run()
+
 
