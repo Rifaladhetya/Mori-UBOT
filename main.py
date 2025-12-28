@@ -2,53 +2,125 @@ from pyrogram import Client, filters
 from os import getenv
 import asyncio
 
+# --- SETUP AKUN ---
 api_id = int(getenv("API_ID"))
 api_hash = getenv("API_HASH")
 session_string = getenv("SESSION_STRING")
 
-app = Client("my_bot", api_id=api_id, api_hash=api_hash, session_string=session_string)
+app = Client("mori_ubot", api_id=api_id, api_hash=api_hash, session_string=session_string)
 
+# --- FITUR 1: .ALIVE ---
 @app.on_message(filters.command("alive", prefixes=".") & filters.me)
 async def alive_command(_, message):
-    await message.edit("🤖 **Sistem Userbot: ONLINE!**\n\nSiap melayani Paduka Raja! 👑")
+    await message.edit("🤖 **Mori-UBOT Menyala Abangku!** 🔥\n\nSemua sistem sinkron dan siap tempur!")
 
-print("Bot sedang berjalan... Jangan lupa napas!")
-
-# --- G-Cast Khusus Grup ---
+# --- FITUR 2: .GCAST DENGAN AUTO-SYNC ---
 @app.on_message(filters.command("gcast", prefixes=".") & filters.me)
 async def gcast_handler(client, message):
     msg = message.reply_to_message or message
     
+    # Ambil konten teks atau media
     if message.reply_to_message:
         content = message.reply_to_message
     else:
         if len(message.command) < 2:
-            return await message.edit("❌ **Gagal!** Berikan teks atau balas ke pesan.")
+            return await message.edit("❌ **Gagal!** Kasih teks atau reply pesan dulu, Abangku!")
         content = message.text.split(None, 1)[1]
 
-    await message.edit("🏘️ **Sinkronisasi Database & Memulai Broadcast...**")
+    await message.edit("🔄 **Sedang Sync Database & Mengirim ke Grup...**")
     
     sent = 0
     failed = 0
     
-    # Kita pakai get_dialogs() untuk memaksa bot mendata ulang semua chat
+    # Proses Sync: Mengambil semua dialog untuk memastikan ID grup terdaftar
     async for dialog in client.get_dialogs():
         if dialog.chat.type in ["supergroup", "group"]:
             try:
-                # Kita kirim ke ID yang sudah diverifikasi oleh dialog
                 if message.reply_to_message:
                     await content.copy(dialog.chat.id)
                 else:
                     await client.send_message(dialog.chat.id, content)
                 sent += 1
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.3) # Jeda anti-limit
             except Exception as e:
-                print(f"Gagal kirim ke {dialog.chat.id}: {e}")
+                print(f"Gagal di {dialog.chat.id}: {e}")
                 failed += 1
                 continue
 
-    await message.edit(f"✅ **Broadcast Grup Selesai!**\n\n🏘️ Grup Berhasil: `{sent}`\n🔴 Gagal: `{failed}`")
+    await message.edit(f"✅ **Broadcast Selesai!**\n\n🏘️ Grup Terjangkau: `{sent}`\n🔴 Gagal: `{failed}`")
 
+# --- FITUR 3: .INFO USER ---
+@app.on_message(filters.command("info", prefixes=".") & filters.me)
+async def info_cmd(client, message):
+    # Jika kamu mereply pesan, bot akan ambil info orang itu. 
+    # Jika tidak, bot ambil info kamu sendiri.
+    user_id = message.reply_to_message.from_user.id if message.reply_to_message else "me"
+    
+    try:
+        user = await client.get_users(user_id)
+        info_text = (
+            f"👤 **INFORMASI PENGGUNA**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 **ID:** `{user.id}`\n"
+            f"👤 **Nama Depan:** {user.first_name}\n"
+            f"👥 **Nama Belakang:** {user.last_name or '-'}\n"
+            f"🔗 **Username:** @{user.username or '-'}\n"
+            f"🤖 **Bot:** {'Iya' if user.is_bot else 'Bukan'}\n"
+            f"🌟 **Premium:** {'Iya' if user.is_premium else 'Bukan'}\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
+        )
+        await message.edit(info_text)
+    except Exception as e:
+        await message.edit(f"❌ **Gagal mengambil info:** `{e}`")
+
+# --- FITUR 4: .TAGALL (Mention Semua Anggota) ---
+@app.on_message(filters.command("tagall", prefixes=".") & filters.me)
+async def tag_all_cmd(client, message):
+    # Cek apakah perintah digunakan di grup
+    if message.chat.type not in ["supergroup", "group"]:
+        return await message.edit("❌ **Fitur ini hanya untuk di dalam grup!**")
+
+    # Ambil pesan tambahan jika ada (contoh: .tagall bangun woi)
+    input_str = message.text.split(None, 1)[1] if len(message.command) > 1 else "Panggilan Darurat!"
+    
+    await message.delete() # Hapus pesan perintah agar rapi
+    
+    mentions = f"📣 **{input_str}**\n\n"
+    count = 0
+    
+    # Ambil daftar anggota grup
+    async for member in client.get_chat_members(message.chat.id):
+        if member.user.is_bot or member.user.is_deleted:
+            continue
+        mentions += f"[{member.user.first_name}](tg://user?id={member.user.id}) "
+        count += 1
+        
+        # Kirim per 5 orang agar tidak kepanjangan dan kena spam limit
+        if count % 5 == 0:
+            await client.send_message(message.chat.id, mentions)
+            mentions = "" # Reset teks untuk kloter berikutnya
+            await asyncio.sleep(0.5) # Jeda aman biar gak kena limit Telegram
+
+    # Kirim sisa anggota yang belum ter-tag
+    if mentions:
+        await client.send_message(message.chat.id, mentions)
+
+# --- FITUR 5: .HELP MENU ---
+@app.on_message(filters.command("help", prefixes=".") & filters.me)
+async def help_cmd(_, message):
+    help_text = (
+        "📜 **MENU BANTUAN MORI-UBOT** 📜\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "✅ `.alive` - Cek status bot\n"
+        "🏘️ `.gcast` - Broadcast ke semua grup (Auto-Sync)\n"
+        "👤 `.info` - Detail profil (Reply atau sendiri)\n"
+        "📣 `.tagall` - Mention semua anggota grup\n"
+        "❓ `.help` - Menampilkan menu ini\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 *Tips: Gunakan dengan bijak, Abangku!* 🔥"
+    )
+    await message.edit(help_text)
+
+# --- JALANKAN MESIN ---
+print("Bot menyala... Tanpa drama!")
 app.run()
-
-
