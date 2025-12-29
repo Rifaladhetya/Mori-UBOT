@@ -1,4 +1,5 @@
 from pyrogram import Client, filters
+from pyrogram.errors import FloodWait
 from os import getenv
 import asyncio
 
@@ -14,7 +15,7 @@ app = Client("mori_ubot", api_id=api_id, api_hash=api_hash, session_string=sessi
 async def alive_command(_, message):
     await message.edit("🤖 **Mori-UBOT Menyala Abangku!** 🔥\n\nSemua sistem sinkron dan siap tempur!")
 
-# --- FITUR 2: .GCAST DENGAN AUTO-SYNC (FIXED) ---
+# --- FITUR 2: .GCAST KHUSUS GRUP ---
 @app.on_message(filters.command("gcast", prefixes=".") & filters.me)
 async def gcast_handler(client, message):
     # Tentukan apakah reply atau kirim teks biasa
@@ -34,27 +35,23 @@ async def gcast_handler(client, message):
     sent = 0
     failed = 0
     
-    # Proses Sync: Mengambil semua dialog untuk memastikan ID grup terdaftar
+    # Proses Sync: Mengambil semua dialog dan filter hanya grup
     async for dialog in client.get_dialogs():
         if dialog.chat.type in ["supergroup", "group"]:
             try:
                 if is_reply:
-                    # Copy pesan yang di-reply (bisa teks, foto, video, dll)
                     await content_msg.copy(dialog.chat.id)
                 else:
-                    # Kirim teks biasa
                     await client.send_message(dialog.chat.id, content_text)
                 
                 sent += 1
-                await asyncio.sleep(0.3)  # Jeda anti-limit
+                await asyncio.sleep(0.3)
                 
             except FloodWait as e:
-                # Khusus handle flood wait dari Telegram
                 print(f"FloodWait {e.value} detik di {dialog.chat.id}")
                 await asyncio.sleep(e.value)
                 failed += 1
             except Exception as e:
-                # Error lainnya (banned, restricted, dll)
                 print(f"Gagal di {dialog.chat.id}: {e}")
                 failed += 1
 
@@ -63,11 +60,10 @@ async def gcast_handler(client, message):
         f"🏘️ Grup Terjangkau: `{sent}`\n"
         f"🔴 Gagal: `{failed}`"
     )
+
 # --- FITUR 3: .INFO USER ---
 @app.on_message(filters.command("info", prefixes=".") & filters.me)
 async def info_cmd(client, message):
-    # Jika kamu mereply pesan, bot akan ambil info orang itu. 
-    # Jika tidak, bot ambil info kamu sendiri.
     user_id = message.reply_to_message.from_user.id if message.reply_to_message else "me"
     
     try:
@@ -90,32 +86,27 @@ async def info_cmd(client, message):
 # --- FITUR 4: .TAGALL (Mention Semua Anggota) ---
 @app.on_message(filters.command("tagall", prefixes=".") & filters.me)
 async def tag_all_cmd(client, message):
-    # Cek apakah perintah digunakan di grup
     if message.chat.type not in ["supergroup", "group"]:
         return await message.edit("❌ **Fitur ini hanya untuk di dalam grup!**")
 
-    # Ambil pesan tambahan jika ada (contoh: .tagall bangun woi)
     input_str = message.text.split(None, 1)[1] if len(message.command) > 1 else "Panggilan Darurat!"
     
-    await message.delete() # Hapus pesan perintah agar rapi
+    await message.delete()
     
     mentions = f"📣 **{input_str}**\n\n"
     count = 0
     
-    # Ambil daftar anggota grup
     async for member in client.get_chat_members(message.chat.id):
         if member.user.is_bot or member.user.is_deleted:
             continue
         mentions += f"[{member.user.first_name}](tg://user?id={member.user.id}) "
         count += 1
         
-        # Kirim per 5 orang agar tidak kepanjangan dan kena spam limit
         if count % 5 == 0:
             await client.send_message(message.chat.id, mentions)
-            mentions = "" # Reset teks untuk kloter berikutnya
-            await asyncio.sleep(0.5) # Jeda aman biar gak kena limit Telegram
+            mentions = ""
+            await asyncio.sleep(0.5)
 
-    # Kirim sisa anggota yang belum ter-tag
     if mentions:
         await client.send_message(message.chat.id, mentions)
 
@@ -138,4 +129,3 @@ async def help_cmd(_, message):
 # --- JALANKAN MESIN ---
 print("Bot menyala... Tanpa drama!")
 app.run()
-
