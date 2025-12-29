@@ -39,10 +39,22 @@ async def gcast_handler(client, message):
     async for dialog in client.get_dialogs():
         if dialog.chat.type in ["supergroup", "group"]:
             try:
+                # Validasi peer ID sebelum kirim
+                chat_id = dialog.chat.id
+                
+                # Coba resolve peer dulu untuk memastikan ID valid
+                try:
+                    await client.resolve_peer(chat_id)
+                except Exception as resolve_error:
+                    print(f"Peer ID invalid, skip: {chat_id} - {resolve_error}")
+                    failed += 1
+                    continue
+                
+                # Kirim pesan
                 if is_reply:
-                    await content_msg.copy(dialog.chat.id)
+                    await content_msg.copy(chat_id)
                 else:
-                    await client.send_message(dialog.chat.id, content_text)
+                    await client.send_message(chat_id, content_text)
                 
                 sent += 1
                 await asyncio.sleep(0.3)
@@ -50,6 +62,10 @@ async def gcast_handler(client, message):
             except FloodWait as e:
                 print(f"FloodWait {e.value} detik di {dialog.chat.id}")
                 await asyncio.sleep(e.value)
+                failed += 1
+            except (ValueError, KeyError) as e:
+                # Handle peer ID invalid & ID not found
+                print(f"Peer error di {dialog.chat.id}: {e}")
                 failed += 1
             except Exception as e:
                 print(f"Gagal di {dialog.chat.id}: {e}")
