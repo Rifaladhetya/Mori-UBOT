@@ -14,18 +14,20 @@ app = Client("mori_ubot", api_id=api_id, api_hash=api_hash, session_string=sessi
 async def alive_command(_, message):
     await message.edit("🤖 **Mori-UBOT Menyala Abangku!** 🔥\n\nSemua sistem sinkron dan siap tempur!")
 
-# --- FITUR 2: .GCAST DENGAN AUTO-SYNC ---
+# --- FITUR 2: .GCAST DENGAN AUTO-SYNC (FIXED) ---
 @app.on_message(filters.command("gcast", prefixes=".") & filters.me)
 async def gcast_handler(client, message):
-    msg = message.reply_to_message or message
+    # Tentukan apakah reply atau kirim teks biasa
+    is_reply = bool(message.reply_to_message)
     
-    # Ambil konten teks atau media
-    if message.reply_to_message:
-        content = message.reply_to_message
+    if is_reply:
+        content_msg = message.reply_to_message
+        content_text = None
     else:
         if len(message.command) < 2:
             return await message.edit("❌ **Gagal!** Kasih teks atau reply pesan dulu, Abangku!")
-        content = message.text.split(None, 1)[1]
+        content_text = message.text.split(None, 1)[1]
+        content_msg = None
 
     await message.edit("🔄 **Sedang Sync Database & Mengirim ke Grup...**")
     
@@ -36,19 +38,31 @@ async def gcast_handler(client, message):
     async for dialog in client.get_dialogs():
         if dialog.chat.type in ["supergroup", "group"]:
             try:
-                if message.reply_to_message:
-                    await content.copy(dialog.chat.id)
+                if is_reply:
+                    # Copy pesan yang di-reply (bisa teks, foto, video, dll)
+                    await content_msg.copy(dialog.chat.id)
                 else:
-                    await client.send_message(dialog.chat.id, content)
+                    # Kirim teks biasa
+                    await client.send_message(dialog.chat.id, content_text)
+                
                 sent += 1
-                await asyncio.sleep(0.3) # Jeda anti-limit
+                await asyncio.sleep(0.3)  # Jeda anti-limit
+                
+            except FloodWait as e:
+                # Khusus handle flood wait dari Telegram
+                print(f"FloodWait {e.value} detik di {dialog.chat.id}")
+                await asyncio.sleep(e.value)
+                failed += 1
             except Exception as e:
+                # Error lainnya (banned, restricted, dll)
                 print(f"Gagal di {dialog.chat.id}: {e}")
                 failed += 1
-                continue
 
-    await message.edit(f"✅ **Broadcast Selesai!**\n\n🏘️ Grup Terjangkau: `{sent}`\n🔴 Gagal: `{failed}`")
-
+    await message.edit(
+        f"✅ **Broadcast Selesai!**\n\n"
+        f"🏘️ Grup Terjangkau: `{sent}`\n"
+        f"🔴 Gagal: `{failed}`"
+    )
 # --- FITUR 3: .INFO USER ---
 @app.on_message(filters.command("info", prefixes=".") & filters.me)
 async def info_cmd(client, message):
@@ -124,3 +138,4 @@ async def help_cmd(_, message):
 # --- JALANKAN MESIN ---
 print("Bot menyala... Tanpa drama!")
 app.run()
+
