@@ -25,7 +25,7 @@ Userbot Telegram sederhana berbasis Pyrogram v2 dengan sistem arsitektur Modular
 
 ### 1. Kloning Repo & Masuk ke Folder
 ```bash
-git clone https://github.com/Rifaladhetya/Mori-UBOT.git
+git clone https://github.com/jarvisnya/Mori-UBOT.git
 cd Mori-UBOT
 ```
 
