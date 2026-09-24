@@ -3,6 +3,7 @@
 *.session
 *.session-journal
 restart.tmp
+autoreply_data.json
 
 # Python / Virtual Environment
 __pycache__/

@@ -10,6 +10,8 @@ async def help_cmd(_, message):
         "🏘️ `.gcast <teks/reply>` - Broadcast ke semua grup\n"
         "👤 `.info <reply/user/id>` - Detail profil Telegram\n"
         "📣 `.tagall <pesan>` - Mention semua anggota grup\n"
+        "💬 `.autoreply [on/off]` - Auto-reply DM (cooldown 24 jam)\n"
+        "✍️ `.setautoreply <teks>` - Ubah teks pesan auto-reply\n"
         "🔄 `.reload [plugin]` - Hot-reload plugin tanpa restart\n"
         "⚡ `.restart` - Restart bot penuh\n"
         "📦 `.plugins` - Daftar plugin aktif\n"
