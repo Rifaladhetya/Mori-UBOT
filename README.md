@@ -7,20 +7,6 @@ Userbot Telegram sederhana berbasis Pyrogram v2 dengan sistem arsitektur Modular
 
 ---
 
-## 🛠️ Fitur Tersedia
-- `.alive` - Cek status aktif bot.
-- `.ping` - Cek kecepatan respon / latency bot.
-- `.gcast <pesan / reply>` - Broadcast pesan ke semua grup/supergroup.
-- `.info <reply / username / ID>` - Cek profil detail pengguna Telegram.
-- `.tagall <pesan>` - Mention semua member di dalam grup.
-- `.reload [plugin]` - Hot-reload plugin tanpa mematikan bot atau koneksi Telegram.
-- `.load <plugin>` / `.unload <plugin>` - Muat atau matikan plugin dinamis.
-- `.plugins` - Menampilkan daftar plugin yang aktif dalam memori.
-- `.restart` - Restart bot penuh secara in-place.
-- `.help` - Menampilkan daftar perintah bantuan.
-
----
-
 ## 💻 Panduan Menjalankan di Localhost
 
 ### 1. Kloning Repo & Masuk ke Folder
