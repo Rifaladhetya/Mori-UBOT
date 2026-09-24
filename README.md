@@ -1,6 +1,9 @@
 # 🤖 Mori-UBOT
 
-Userbot Telegram sederhana berbasis Pyrogram v2 dengan sistem arsitektur Modular Plugin & Hot-Reload.
+[![100% Gratis](https://img.shields.io/badge/Akses-100%25%20Gratis%20%2F%20Free-brightgreen?style=flat-square)](#)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square)](#)
+
+Userbot Telegram sederhana berbasis Pyrogram v2 dengan sistem arsitektur Modular Plugin & Hot-Reload. **100% Gratis & Bebas Digunakan (Free).**
 
 > ⚠️ **Pemberitahuan Penting:**  
 > Repositori ini **hanya dirancang dan dioptimalkan untuk berjalan di localhost / server lokal** (PC, Laptop, atau VPS pribadi). Tidak direkomendasikan untuk platform cloud serverless tanpa persistent storage karena sesi autentikasi (`*.session`) disimpan secara lokal di mesin Anda.
