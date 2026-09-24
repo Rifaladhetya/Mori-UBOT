@@ -1,10 +1,11 @@
 import asyncio
+import importlib
 import os
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from pyrogram import Client, filters
-from pyrogram.enums import ChatType
-from pyrogram.errors import FloodWait
+from pyrogram.handlers.handler import Handler
 
 # --- LOAD ENVIRONMENT VARIABLES ---
 load_dotenv()
@@ -29,7 +30,6 @@ except ValueError:
     sys.exit(1)
 
 # Inisialisasi client
-# Jika session_string tidak diisi, Pyrogram akan login interaktif via terminal dan menyimpan mori_ubot.session
 client_kwargs = {
     "name": "mori_ubot",
     "api_id": api_id,
@@ -40,150 +40,208 @@ if session_string and session_string.strip():
 
 app = Client(**client_kwargs)
 
-# --- FITUR 1: .ALIVE ---
-@app.on_message(filters.command("alive", prefixes=".") & filters.me)
-async def alive_command(_, message):
-    await message.edit("🤖 **Mori-UBOT Menyala Abangku!** 🔥\n\nSemua sistem sinkron dan siap tempur!")
+# Registry plugin aktif: {plugin_name: [(handler, group), ...]}
+LOADED_PLUGINS: dict[str, list[tuple[Handler, int]]] = {}
+RESTART_FILE = Path("restart.tmp")
 
-# --- FITUR 2: .GCAST KHUSUS GRUP ---
-@app.on_message(filters.command("gcast", prefixes=".") & filters.me)
-async def gcast_handler(client, message):
-    is_reply = bool(message.reply_to_message)
+
+# --- PLUGIN MANAGER ENGINE ---
+def load_plugin(client: Client, plugin_name: str) -> int:
+    """Load atau reload sebuah modul plugin dan daftarkan semua handler miliknya."""
+    module_name = f"plugins.{plugin_name}"
     
-    if is_reply:
-        content_msg = message.reply_to_message
-        content_text = None
+    if module_name in sys.modules:
+        module = importlib.reload(sys.modules[module_name])
     else:
-        if len(message.command) < 2:
-            return await message.edit("❌ **Gagal!** Kasih teks atau reply pesan dulu, Abangku!")
-        content_text = message.text.split(None, 1)[1]
-        content_msg = None
+        module = importlib.import_module(module_name)
 
-    await message.edit("🔄 **Sedang Sync Database & Mengirim ke Grup...**")
-    
-    sent = 0
-    failed = 0
-    
-    # Mengambil semua dialog dan filter hanya grup / supergroup
-    async for dialog in client.get_dialogs():
-        if dialog.chat.type in [ChatType.SUPERGROUP, ChatType.GROUP]:
-            chat_id = dialog.chat.id
-            try:
-                # Validasi peer ID
-                try:
-                    await client.resolve_peer(chat_id)
-                except Exception as resolve_error:
-                    print(f"Peer ID invalid, skip: {chat_id} - {resolve_error}")
-                    failed += 1
-                    continue
-                
-                # Kirim pesan
-                if is_reply:
-                    await content_msg.copy(chat_id)
-                else:
-                    await client.send_message(chat_id, content_text)
-                
-                sent += 1
-                await asyncio.sleep(0.3)
-                
-            except FloodWait as e:
-                wait_time = int(getattr(e, "value", 10))
-                print(f"FloodWait {wait_time} detik di {dialog.chat.id}")
-                await asyncio.sleep(wait_time)
-                failed += 1
-            except (ValueError, KeyError) as e:
-                print(f"Peer error di {dialog.chat.id}: {e}")
-                failed += 1
-            except Exception as e:
-                print(f"Gagal di {dialog.chat.id}: {e}")
-                failed += 1
+    handlers = []
+    for attr in dir(module):
+        obj = getattr(module, attr)
+        for h, g in getattr(obj, "handlers", []):
+            if isinstance(h, Handler) and isinstance(g, int):
+                client.add_handler(h, g)
+                handlers.append((h, g))
 
-    await message.edit(
-        f"✅ **Broadcast Selesai!**\n\n"
-        f"🏘️ Grup Terjangkau: `{sent}`\n"
-        f"🔴 Gagal: `{failed}`"
-    )
+    LOADED_PLUGINS[plugin_name] = handlers
+    return len(handlers)
 
-# --- FITUR 3: .INFO USER ---
-@app.on_message(filters.command("info", prefixes=".") & filters.me)
-async def info_cmd(client, message):
-    if len(message.command) > 1:
-        target = message.command[1]
-        user_id = int(target) if target.isdigit() else target
-    elif message.reply_to_message:
-        if message.reply_to_message.from_user:
-            user_id = message.reply_to_message.from_user.id
-        elif message.reply_to_message.sender_chat:
-            user_id = message.reply_to_message.sender_chat.id
-        else:
-            return await message.edit("❌ **Gagal menentukan pengirim pesan!**")
-    else:
-        user_id = "me"
-    
-    try:
-        user = await client.get_users(user_id)
-        username = f"@{user.username}" if user.username else "-"
-        info_text = (
-            f"👤 **INFORMASI PENGGUNA**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 **ID:** `{user.id}`\n"
-            f"👤 **Nama Depan:** {user.first_name}\n"
-            f"👥 **Nama Belakang:** {user.last_name or '-'}\n"
-            f"🔗 **Username:** {username}\n"
-            f"🤖 **Bot:** {'Iya' if user.is_bot else 'Bukan'}\n"
-            f"🌟 **Premium:** {'Iya' if getattr(user, 'is_premium', False) else 'Bukan'}\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
-        await message.edit(info_text)
-    except Exception as e:
-        await message.edit(f"❌ **Gagal mengambil info:** `{e}`")
 
-# --- FITUR 4: .TAGALL (Mention Semua Anggota) ---
-@app.on_message(filters.command("tagall", prefixes=".") & filters.me)
-async def tag_all_cmd(client, message):
-    if message.chat.type not in [ChatType.SUPERGROUP, ChatType.GROUP]:
-        return await message.edit("❌ **Fitur ini hanya untuk di dalam grup!**")
+def unload_plugin(client: Client, plugin_name: str) -> bool:
+    """Hapus semua handler plugin dan lepaskan modul dari memory."""
+    if plugin_name not in LOADED_PLUGINS:
+        return False
 
-    input_str = message.text.split(None, 1)[1] if len(message.command) > 1 else "Panggilan Darurat!"
-    
-    await message.delete()
-    
-    mentions = f"📣 **{input_str}**\n\n"
-    count = 0
-    
-    async for member in client.get_chat_members(message.chat.id):
-        if not member.user or member.user.is_bot or member.user.is_deleted:
+    for h, g in LOADED_PLUGINS[plugin_name]:
+        client.remove_handler(h, g)
+
+    del LOADED_PLUGINS[plugin_name]
+
+    module_name = f"plugins.{plugin_name}"
+    if module_name in sys.modules:
+        del sys.modules[module_name]
+
+    return True
+
+
+def reload_plugin(client: Client, plugin_name: str) -> int:
+    """Hot-reload satu plugin tertentu."""
+    unload_plugin(client, plugin_name)
+    return load_plugin(client, plugin_name)
+
+
+def load_all_plugins(client: Client) -> dict[str, int]:
+    """Muat semua file python di direktori plugins/."""
+    results = {}
+    plugins_dir = Path("plugins")
+    if not plugins_dir.exists():
+        plugins_dir.mkdir(parents=True, exist_ok=True)
+        return results
+
+    for py_file in sorted(plugins_dir.glob("*.py")):
+        if py_file.stem.startswith("__"):
             continue
-        first_name = member.user.first_name or "Pengguna"
-        mentions += f"[{first_name}](tg://user?id={member.user.id}) "
-        count += 1
+        try:
+            count = load_plugin(client, py_file.stem)
+            results[py_file.stem] = count
+            print(f"📦 [PLUGIN LOADED] {py_file.stem} ({count} handlers)")
+        except Exception as e:
+            print(f"❌ [PLUGIN ERROR] Gagal memuat {py_file.stem}: {e}")
+    return results
+
+
+# --- MANAJEMEN SISTEM: RESTART & HOT-RELOAD ---
+
+@app.on_message(filters.command("restart", prefixes=".") & filters.me)  # type: ignore
+async def restart_command(client: Client, message):
+    """Restart proses bot sepenuhnya via execl."""
+    await message.edit("🔄 **Sedang merestart Mori-UBOT...**")
+    try:
+        RESTART_FILE.write_text(f"{message.chat.id}:{message.id}")
+    except Exception as e:
+        print(f"Gagal menulis restart file: {e}")
+    
+    await asyncio.sleep(1)
+    os.execl(sys.executable, sys.executable, *sys.argv)
+
+
+@app.on_message(filters.command("reload", prefixes=".") & filters.me)  # type: ignore
+async def reload_command(client: Client, message):
+    """Hot-reload plugin tanpa mematikan bot atau koneksi Telegram."""
+    args = message.command
+    if len(args) > 1:
+        target = args[1].lower().replace(".py", "")
+        plugin_file = Path(f"plugins/{target}.py")
+        if not plugin_file.exists():
+            return await message.edit(f"❌ **Plugin `{target}` tidak ditemukan di folder `plugins/`!**")
+
+        await message.edit(f"🔄 **Mereload plugin `{target}`...**")
+        try:
+            cnt = reload_plugin(client, target)
+            await message.edit(f"✅ **Plugin `{target}` berhasil di-reload!** ({cnt} handler aktif)")
+        except Exception as e:
+            await message.edit(f"❌ **Gagal reload plugin `{target}`:** `{e}`")
+    else:
+        await message.edit("🔄 **Sedang mereload semua plugin...**")
+        plugins_to_reload = [p.stem for p in sorted(Path("plugins").glob("*.py")) if not p.stem.startswith("__")]
         
-        if count % 5 == 0:
-            await client.send_message(message.chat.id, mentions)
-            mentions = f"📣 **{input_str}**\n\n"
-            count = 0
-            await asyncio.sleep(0.5)
+        success = []
+        errors = []
+        for name in plugins_to_reload:
+            try:
+                cnt = reload_plugin(client, name)
+                success.append(f"`{name}` ({cnt})")
+            except Exception as e:
+                errors.append(f"`{name}`: {e}")
 
-    if count > 0 and mentions != f"📣 **{input_str}**\n\n":
-        await client.send_message(message.chat.id, mentions)
+        res = f"✅ **Semua Plugin Berhasil Di-reload!**\n\n📦 **Aktif ({len(success)}):**\n" + ", ".join(success)
+        if errors:
+            res += f"\n\n⚠️ **Error ({len(errors)}):**\n" + "\n".join(errors)
+        await message.edit(res)
 
-# --- FITUR 5: .HELP MENU ---
-@app.on_message(filters.command("help", prefixes=".") & filters.me)
-async def help_cmd(_, message):
-    help_text = (
-        "📜 **MENU BANTUAN MORI-UBOT** 📜\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "✅ `.alive` - Cek status bot\n"
-        "🏘️ `.gcast` - Broadcast ke semua grup (Auto-Sync)\n"
-        "👤 `.info` - Detail profil (Reply, mention, atau diri sendiri)\n"
-        "📣 `.tagall` - Mention semua anggota grup\n"
-        "❓ `.help` - Menampilkan menu ini\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 *Tips: Gunakan dengan bijak, Abangku!* 🔥"
-    )
-    await message.edit(help_text)
 
-# --- JALANKAN MESIN ---
+@app.on_message(filters.command("plugins", prefixes=".") & filters.me)  # type: ignore
+async def list_plugins_command(_, message):
+    """Menampilkan daftar plugin yang aktif dalam memori."""
+    if not LOADED_PLUGINS:
+        return await message.edit("📦 **Tidak ada plugin yang aktif saat ini.**")
+
+    text = "📦 **DAFTAR PLUGIN AKTIF MORI-UBOT**\n━━━━━━━━━━━━━━━━━━━━\n"
+    for name, handlers in LOADED_PLUGINS.items():
+        text += f"• `{name}` — {len(handlers)} handler(s)\n"
+    text += f"━━━━━━━━━━━━━━━━━━━━\nTotal: `{len(LOADED_PLUGINS)}` plugin aktif."
+    await message.edit(text)
+
+
+@app.on_message(filters.command("load", prefixes=".") & filters.me)  # type: ignore
+async def load_cmd(client: Client, message):
+    """Memuat plugin baru dari folder plugins/."""
+    if len(message.command) < 2:
+        return await message.edit("❌ **Format salah!** Gunakan: `.load <nama_plugin>`")
+
+    target = message.command[1].lower().replace(".py", "")
+    plugin_file = Path(f"plugins/{target}.py")
+    if not plugin_file.exists():
+        return await message.edit(f"❌ **File `plugins/{target}.py` tidak ditemukan!**")
+
+    try:
+        cnt = load_plugin(client, target)
+        await message.edit(f"✅ **Plugin `{target}` berhasil dimuat!** ({cnt} handler aktif)")
+    except Exception as e:
+        await message.edit(f"❌ **Gagal memuat `{target}`:** `{e}`")
+
+
+@app.on_message(filters.command("unload", prefixes=".") & filters.me)  # type: ignore
+async def unload_cmd(client: Client, message):
+    """Mematikan plugin dari memori."""
+    if len(message.command) < 2:
+        return await message.edit("❌ **Format salah!** Gunakan: `.unload <nama_plugin>`")
+
+    target = message.command[1].lower().replace(".py", "")
+    if target not in LOADED_PLUGINS:
+        return await message.edit(f"❌ **Plugin `{target}` tidak sedang aktif!**")
+
+    unload_plugin(client, target)
+    await message.edit(f"🛑 **Plugin `{target}` berhasil dinonaktifkan!**")
+
+
+# --- STARTUP RUNNER ---
+async def startup():
+    print("🚀 Menginisialisasi Mori-UBOT...")
+    await app.start()
+    
+    # Muat semua plugin
+    load_all_plugins(app)
+    
+    # Cek apakah bot baru saja direstart via .restart
+    if RESTART_FILE.exists():
+        try:
+            content = RESTART_FILE.read_text().strip()
+            RESTART_FILE.unlink(missing_ok=True)
+            if ":" in content:
+                chat_id_str, msg_id_str = content.split(":", 1)
+                await app.edit_message_text(
+                    chat_id=int(chat_id_str),
+                    message_id=int(msg_id_str),
+                    text="🔥 **Mori-UBOT Berhasil Direstart & Menyala Kembali!** 🔥\nSemua plugin siap digunakan."
+                )
+        except Exception as e:
+            print(f"Gagal mengedit pesan restart: {e}")
+
+    me = await app.get_me()
+    name = f"{me.first_name} {me.last_name or ''}".strip()
+    print(f"✅ Mori-UBOT aktif sebagai: {name} (@{me.username or me.id})")
+    print("🔥 Siap tempur! Tekan Ctrl+C untuk berhenti.")
+
+
+async def main():
+    await startup()
+    while True:
+        await asyncio.sleep(3600)
+
+
 if __name__ == "__main__":
-    print("🚀 Mori-UBOT menyala... Tanpa drama!")
-    app.run()
+    try:
+        app.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("\n👋 Mori-UBOT dimatikan dengan aman.")

@@ -2,6 +2,7 @@
 .env
 *.session
 *.session-journal
+restart.tmp
 
 # Python / Virtual Environment
 __pycache__/
