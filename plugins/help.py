@@ -6,6 +6,7 @@ async def help_cmd(_, message):
         "📜 **MENU BANTUAN MORI-UBOT** 📜\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
         "✅ `.alive` - Cek status bot\n"
+        "🏓 `.ping` - Cek kecepatan respon bot\n"
         "🏘️ `.gcast <teks/reply>` - Broadcast ke semua grup\n"
         "👤 `.info <reply/user/id>` - Detail profil Telegram\n"
         "📣 `.tagall <pesan>` - Mention semua anggota grup\n"
