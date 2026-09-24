@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pyrogram import Client, filters
 from pyrogram.handlers.handler import Handler
+from pyrogram.raw.functions.messages.save_draft import SaveDraft
 
 # --- LOAD ENVIRONMENT VARIABLES ---
 load_dotenv()
@@ -43,6 +44,7 @@ app = Client(**client_kwargs)
 # Registry plugin aktif: {plugin_name: [(handler, group), ...]}
 LOADED_PLUGINS: dict[str, list[tuple[Handler, int]]] = {}
 RESTART_FILE = Path("restart.tmp")
+PLUGIN_MTIMES: dict[str, float] = {}
 
 
 # --- PLUGIN MANAGER ENGINE ---
@@ -104,6 +106,7 @@ def load_all_plugins(client: Client) -> dict[str, int]:
         try:
             count = load_plugin(client, py_file.stem)
             results[py_file.stem] = count
+            PLUGIN_MTIMES[py_file.stem] = py_file.stat().st_mtime
             print(f"📦 [PLUGIN LOADED] {py_file.stem} ({count} handlers)")
         except Exception as e:
             print(f"❌ [PLUGIN ERROR] Gagal memuat {py_file.stem}: {e}")
@@ -157,6 +160,13 @@ async def reload_command(client: Client, message):
         res = f"✅ **Semua Plugin Berhasil Di-reload!**\n\n📦 **Aktif ({len(success)}):**\n" + ", ".join(success)
         if errors:
             res += f"\n\n⚠️ **Error ({len(errors)}):**\n" + "\n".join(errors)
+        
+        # Sinkronkan mtimes agar tidak memicu notifikasi watcher berulang
+        PLUGIN_MTIMES.clear()
+        for p in Path("plugins").glob("*.py"):
+            if not p.stem.startswith("__"):
+                PLUGIN_MTIMES[p.stem] = p.stat().st_mtime
+
         await message.edit(res)
 
 
@@ -205,6 +215,62 @@ async def unload_cmd(client: Client, message):
     await message.edit(f"🛑 **Plugin `{target}` berhasil dinonaktifkan!**")
 
 
+# --- BACKGROUND WATCHER: AUTO DRAFT NOTIFIER ---
+async def plugin_watcher(client: Client):
+    """Memantau folder plugins/ dan memasang draf .reload otomatis di Saved Messages jika ada file baru/update."""
+    await asyncio.sleep(5)  # Beri jeda awal agar inisialisasi awal selesai
+    while True:
+        try:
+            await asyncio.sleep(4)
+            plugins_dir = Path("plugins")
+            if not plugins_dir.exists():
+                continue
+
+            current_files = {
+                p.stem: p.stat().st_mtime
+                for p in plugins_dir.glob("*.py")
+                if not p.stem.startswith("__")
+            }
+
+            changes = []
+            for name, mtime in current_files.items():
+                if name not in PLUGIN_MTIMES:
+                    changes.append(f"Plugin baru: `{name}`")
+                elif mtime > PLUGIN_MTIMES[name]:
+                    changes.append(f"Pembaruan plugin: `{name}`")
+
+            for name in list(PLUGIN_MTIMES.keys()):
+                if name not in current_files:
+                    changes.append(f"Plugin dihapus: `{name}`")
+
+            if changes:
+                # Update mtimes agar tidak berulang
+                PLUGIN_MTIMES.clear()
+                PLUGIN_MTIMES.update(current_files)
+
+                change_desc = "\n".join(f"• {c}" for c in changes)
+                notify_text = (
+                    f"📢 **Pembaruan Fitur Terdeteksi!**\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"{change_desc}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👉 *Draf pesan* `.reload` *telah disiapkan di kolom ketik di bawah. Cukup tekan **Kirim** untuk menerapkan!*"
+                )
+
+                # Kirim pesan notifikasi ke Saved Messages ("me")
+                await client.send_message("me", notify_text)
+
+                # Pasang draf .reload otomatis di kolom ketik Saved Messages
+                peer = await client.resolve_peer("me")
+                await client.invoke(SaveDraft(peer=peer, message=".reload"))  # type: ignore
+                print(f"🔔 [WATCHER] Perubahan terdeteksi: {changes}. Draf .reload disiapkan di Saved Messages.")
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"⚠️ [WATCHER ERROR] {e}")
+
+
 # --- STARTUP RUNNER ---
 async def startup():
     print("🚀 Menginisialisasi Mori-UBOT...")
@@ -212,6 +278,9 @@ async def startup():
     
     # Muat semua plugin
     load_all_plugins(app)
+
+    # Jalankan background watcher untuk auto-draft update
+    asyncio.create_task(plugin_watcher(app))
     
     # Cek apakah bot baru saja direstart via .restart
     if RESTART_FILE.exists():
