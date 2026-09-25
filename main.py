@@ -302,6 +302,25 @@ async def startup():
     print(f"✅ Mori-UBOT aktif sebagai: {name} (@{me.username or me.id})")
     print("🔥 Siap tempur! Tekan Ctrl+C untuk berhenti.")
 
+    # Notifikasi startup otomatis dengan logo ke Saved Messages
+    logo_file = Path("assets/logo.png")
+    startup_msg = (
+        f"🤖 **Mori-UBOT Menyala!** 🔥\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 **Pengguna:** {name}\n"
+        f"🆔 **ID:** `{me.id}`\n"
+        f"⚡ **Status:** Online & Siap Tempur!\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 *Ketik* `.help` *untuk melihat daftar perintah bantuan.*"
+    )
+    try:
+        if logo_file.exists():
+            await app.send_photo("me", photo=str(logo_file), caption=startup_msg)
+        else:
+            await app.send_message("me", startup_msg)
+    except Exception as e:
+        print(f"Gagal mengirim notifikasi startup ke Saved Messages: {e}")
+
 
 async def main():
     await startup()
